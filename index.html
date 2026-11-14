@@ -1,0 +1,596 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>나이스 출결 도우미</title>
+<style>
+:root{
+  --bg:#f6f7fb;--card:#fff;--text:#1d2433;--muted:#667085;--line:#e3e6ee;
+  --primary:#2f6bff;--primary-ink:#fff;--ok:#12a150;--warn:#d98a00;--err:#d92d20;
+  --soft:#eef3ff;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#11141b;--card:#1a1f2a;--text:#e8ebf2;--muted:#9aa3b5;--line:#2b3242;
+    --primary:#5b8cff;--primary-ink:#fff;--ok:#3ccf7a;--warn:#f0b13a;--err:#ff6b5e;--soft:#1f2940;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#11141b;--card:#1a1f2a;--text:#e8ebf2;--muted:#9aa3b5;--line:#2b3242;
+  --primary:#5b8cff;--primary-ink:#fff;--ok:#3ccf7a;--warn:#f0b13a;--err:#ff6b5e;--soft:#1f2940;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:"Pretendard","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;line-height:1.55}
+.wrap{max-width:860px;margin:0 auto;padding:24px 16px 60px}
+h1{font-size:1.5rem;margin:0 0 4px}
+.sub{color:var(--muted);margin:0 0 20px;font-size:.95rem}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:16px}
+.card h2{font-size:1.05rem;margin:0 0 10px;display:flex;align-items:center;gap:8px}
+.step{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:var(--primary);color:var(--primary-ink);font-size:.8rem;font-weight:700}
+textarea{width:100%;min-height:170px;border:1px solid var(--line);border-radius:10px;padding:10px;font-family:ui-monospace,Consolas,monospace;font-size:.9rem;background:var(--bg);color:var(--text);resize:vertical}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
+button,.btn{appearance:none;border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:10px;padding:9px 14px;font-size:.92rem;cursor:pointer;font-family:inherit}
+button.primary{background:var(--primary);border-color:var(--primary);color:var(--primary-ink);font-weight:600}
+button:disabled{opacity:.45;cursor:not-allowed}
+input[type=number]{width:90px;border:1px solid var(--line);border-radius:8px;padding:7px;background:var(--bg);color:var(--text)}
+label.file{position:relative;overflow:hidden}
+label.file input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.hint{color:var(--muted);font-size:.85rem}
+.summary{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 10px}
+.pill{border-radius:999px;padding:3px 10px;font-size:.82rem;background:var(--soft)}
+.pill.err{background:color-mix(in srgb,var(--err) 15%,transparent);color:var(--err)}
+.pill.ok{background:color-mix(in srgb,var(--ok) 15%,transparent);color:var(--ok)}
+.tbl{width:100%;border-collapse:collapse;font-size:.88rem}
+.tbl th,.tbl td{border-bottom:1px solid var(--line);padding:6px 6px;text-align:left;vertical-align:top}
+.tbl th{color:var(--muted);font-weight:600}
+.tbl tr.bad td{color:var(--err)}
+.tblwrap{overflow-x:auto;max-height:360px;overflow-y:auto;border:1px solid var(--line);border-radius:10px}
+.codebox{min-height:90px;font-size:.78rem}
+ol.guide{margin:6px 0 0;padding-left:20px}
+ol.guide li{margin:4px 0}
+.notice{border-left:4px solid var(--warn);background:color-mix(in srgb,var(--warn) 10%,transparent);padding:10px 12px;border-radius:8px;font-size:.9rem}
+code{background:var(--soft);padding:1px 5px;border-radius:5px;font-size:.88em}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:.9rem;opacity:0;transition:.25s;pointer-events:none}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>나이스 출결 도우미</h1>
+  <p class="sub">한 달 치 출결 파일을 나이스 일일출결관리(담임용) 화면에 자동으로 입력해요. 저장과 마감은 선생님이 직접 해요.</p>
+
+  <div class="card">
+    <h2><span class="step">1</span>출결 자료 넣기</h2>
+    <p class="hint"><b>출결앱에서 내보낸 CSV</b>를 그대로 불러오면 돼요. 직접 쓸 때는 열 순서 <code>날짜, 번호, 구분, 교시, 사유</code>로 출석이 아닌 학생만 적어요.</p>
+    <textarea id="src" spellcheck="false" placeholder="날짜,번호,구분,교시,사유
+2026-11-03,1,질병결석,,감기
+2026-11-05,7,미인정지각,1,
+2026-11-10,12,질병결과,3-4,병원 진료"></textarea>
+    <div class="row">
+      <label class="btn file">CSV 파일 불러오기<input type="file" id="file" accept=".csv,.enc,.txt,text/csv"></label>
+      <button id="tpl">양식 내려받기</button>
+      <input type="password" id="pw" placeholder="암호 파일 비밀번호" autocomplete="off" style="width:150px;border:1px solid var(--line);border-radius:8px;padding:7px;background:var(--bg);color:var(--text)">
+      <label class="hint" style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="pwKeep">이 PC에 기억</label>
+      <button id="clearBtn">지우기</button>
+      <span class="hint">입력할 달</span>
+      <select id="month" style="border:1px solid var(--line);border-radius:8px;padding:7px;background:var(--bg);color:var(--text)"><option value="">전체</option></select>
+      <span class="hint">연도 생략 시(예: 11/3)</span>
+      <input type="number" id="year" min="2020" max="2100">
+    </div>
+    <details style="margin-top:12px">
+      <summary class="hint" style="cursor:pointer">작성 규칙 보기</summary>
+      <ul class="hint">
+        <li><b>날짜</b>: 2026-11-03, 2026.11.03, 20261103, 11/3 모두 가능</li>
+        <li><b>구분</b>: 질병·미인정·기타·출석인정 + 결석/지각/조퇴/결과 (예: 미인정지각)</li>
+        <li><b>교시</b>: 결석은 비워두면 하루 전체(마감 칸). 지각·조퇴·결과는 꼭 적어요 → <code>1</code>, <code>3-4</code>, <code>1,3</code>, <code>조회</code>, <code>종례</code></li>
+        <li><b>사유</b>: 비워도 돼요</li>
+        <li><b>출결앱 CSV</b>: 출결유형+출결사유로 구분을 만들어요 (예: 지각+미인정 → 미인정지각, 결석+인정 → 출석인정결석). 나이스 사유 칸에는 출결상세와 메모가 들어가요.</li>
+      </ul>
+    </details>
+  </div>
+
+  <div class="card">
+    <h2><span class="step">2</span>확인하기</h2>
+    <div class="summary" id="summary"><span class="pill">자료를 넣으면 여기에서 검사해요</span></div>
+    <div class="tblwrap"><table class="tbl" id="tbl"><thead><tr><th>날짜</th><th>번호</th><th>구분</th><th>클릭할 칸</th><th>사유</th><th>상태</th></tr></thead><tbody></tbody></table></div>
+  </div>
+
+  <div class="card">
+    <h2><span class="step">3</span>나이스에서 실행하기</h2>
+    <div class="row" style="margin-top:0">
+      <button class="primary" id="copy" disabled>실행 코드 복사</button>
+      <span class="hint" id="copyHint">오류가 없어야 복사할 수 있어요</span>
+    </div>
+    <ol class="guide">
+      <li>나이스 <b>학급담임 → 출결관리 → 일일출결관리(담임용)</b> 화면을 열고 학년·반을 맞춰요.</li>
+      <li><b>F12</b> → <b>Console(콘솔)</b> 탭에서 붙여넣고 Enter. (막히면 <code>allow pasting</code> 입력 후 다시)</li>
+      <li>오른쪽 아래에 <b>출결 입력 패널</b>이 떠요. 날짜 옆 <b>[입력]</b>을 누르면 그 날짜로 이동해 칸을 채워요.</li>
+      <li><b>[▶ 전체 자동 실행]</b>을 누르면 날짜마다 입력 → 저장 → 다시 조회해 저장 확인까지 하고 다음 날짜로 넘어가요. 문제가 있는 날에서 멈춰요.</li>
+    </ol>
+    <div class="notice" style="margin-top:12px">처음엔 <b>한 날짜만</b> 넣어 보고 결과를 확인하세요. 실패가 하나라도 있는 날은 저장하지 않고 멈춰요. 이미 다른 값이 있는 칸은 건드리지 않아요. <b>출결마감</b>은 자동으로 누르지 않으니, 끝나면 전체를 확인하고 직접 마감하세요.</div>
+    <details style="margin-top:12px">
+      <summary class="hint" style="cursor:pointer">복사가 안 되면 여기서 직접 복사</summary>
+      <textarea id="codeOut" class="codebox" readonly></textarea>
+    </details>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ===================== 나이스 화면에서 실행되는 코드 ===================== */
+async function RUNNER(DATA) {
+  const PANEL_ID = 'neisAttHelperPanel';
+  const old = document.getElementById(PANEL_ID); if (old) old.remove();
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const ATT_COLS = ['chulgyulGb','jo','gyo1','gyo2','gyo3','gyo4','gyo5','gyo6','gyo7','gyo8','gyo9','gyo10','jong'];
+  const COL_NM = c => c === 'chulgyulGb' ? '마감' : c === 'jo' ? '조회' : c === 'jong' ? '종례' : c.replace('gyo','') + '교시';
+  const fmt = y => y ? y.slice(0,4) + '.' + y.slice(4,6) + '.' + y.slice(6,8) : '?';
+  const WD = ['일','월','화','수','목','금','토'];
+  let P;
+  try { P = cpr.core.Platform.INSTANCE; } catch (e) { alert('나이스 일일출결관리 화면에서 실행해 주세요.'); return; }
+
+  const findApp = re => P.getAllRunningAppInstances().filter(a => a.app && re.test(a.app.id)).pop();
+  const ctx = () => {
+    const app = findApp(/mis_srgaa02_m02$/);
+    if (!app) throw new Error('일일출결관리(담임용) 화면을 먼저 열어 주세요.');
+    const dtiApp = findApp(/udcSwcDti$/);
+    return {
+      app, g: app.lookup('grdMain'), ds: app.lookup('dsListDdAtte'),
+      cmb: app.lookup('cmbAtteScCd'), slot: app.lookup('atteRmkCnSlot'),
+      btnSearch: app.lookup('btnSearch'), btnSave: app.lookup('btnSave'), clear: app.lookup('rdbClear'),
+      subSave: app.lookup('subInsertDdAtte'), subList: app.lookup('subListDdAtte'),
+      dm: app.lookup('dmSearch'), dti: dtiApp ? dtiApp.lookup('dtiAtteYmd') : null
+    };
+  };
+  const dom = c => c && (document.getElementById('uuid-' + c.uuid) || document.getElementById(c.uuid));
+  const put = (c, v) => { try { if (typeof c.putValue === 'function') c.putValue(v); else c.value = v; } catch (e) { c.value = v; } };
+  const fire = el => {
+    el.scrollIntoView({ block: 'center', inline: 'nearest' });
+    const r = el.getBoundingClientRect();
+    const x = r.left + r.width / 2, y = r.top + r.height / 2;
+    let t = document.elementFromPoint(x, y);
+    if (!t || !el.contains(t)) t = el;
+    const o = { bubbles: true, cancelable: true, view: window, clientX: x, clientY: y, button: 0, buttons: 1 };
+    const PE = window.PointerEvent || MouseEvent;
+    const pe = { pointerId: 1, isPrimary: true, pointerType: 'mouse' };
+    t.dispatchEvent(new PE('pointerdown', Object.assign({}, o, pe)));
+    t.dispatchEvent(new MouseEvent('mousedown', o));
+    t.dispatchEvent(new PE('pointerup', Object.assign({}, o, pe, { buttons: 0 })));
+    t.dispatchEvent(new MouseEvent('mouseup', Object.assign({}, o, { buttons: 0 })));
+    t.dispatchEvent(new MouseEvent('click', Object.assign({}, o, { buttons: 0 })));
+  };
+  const clickBtn = c => { const el = dom(c); if (el) fire(el); else c.click(); };
+  const cellIdx = (g, col) => { const d = g.detail; for (let i = 0; i < d.cellCount; i++) { const c = d.getColumn(i); if (c && c.columnName === col) return i; } return -1; };
+  const normNo = s => String(s == null ? '' : s).trim().replace(/^0+(?=\d)/, '');
+  const rowOf = (ds, no) => { for (let i = 0; i < ds.getRowCount(); i++) if (normNo(ds.getValue(i, 'clsNo')) === String(no)) return i; return -1; };
+  const isHdr = e => /header/i.test((e.getAttribute('role') || '') + (e.getAttribute('data-role') || ''));
+  const NO_SEL = '[data-target="clsNo"],[data-cellindex="0"]';
+  const findCell = (c, no, col, row) => {
+    const root = dom(c.g); if (!root) return null;
+    const ci = cellIdx(c.g, col);
+    const sel = '[data-target="' + col + '"]' + (ci >= 0 ? ',[data-cellindex="' + ci + '"]' : '');
+    const look = () => {
+      const nums = [...root.querySelectorAll(NO_SEL)].filter(e => !isHdr(e) && normNo(e.textContent) === String(no));
+      for (const n of nums) {
+        let p = n.parentElement;
+        for (let i = 0; i < 6 && p && p !== root; i++, p = p.parentElement) {
+          const many = [...p.querySelectorAll(NO_SEL)].filter(e => !isHdr(e)).length;
+          if (many > 1) break; // 한 학생 줄을 벗어나면 중단
+          const t = [...p.querySelectorAll(sel)].find(e => !isHdr(e));
+          if (t) return t;
+        }
+      }
+      return null;
+    };
+    let el = look();
+    if (!el) { try { c.g.focusCell(row, ci); } catch (e) {} el = look(); }
+    return el;
+  };
+  const snap = ds => { const a = []; for (let i = 0; i < ds.getRowCount(); i++) a.push(ATT_COLS.map(k => ds.getValue(i, k) || '').join('|')); return a; };
+
+  /* ---------- 패널 ---------- */
+  const h = (tag, css, text) => { const e = document.createElement(tag); if (css) e.style.cssText = css; if (text != null) e.textContent = text; return e; };
+  const panel = h('div', 'position:fixed;right:16px;bottom:16px;width:360px;max-height:75vh;display:flex;flex-direction:column;background:#fff;color:#1d2433;border:1px solid #c9d2e3;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.25);z-index:2147483647;font:13px/1.5 "Malgun Gothic",sans-serif;overflow:hidden');
+  panel.id = PANEL_ID;
+  const head = h('div', 'display:flex;align-items:center;gap:8px;padding:10px 12px;background:#2f6bff;color:#fff;cursor:move');
+  head.appendChild(h('b', 'flex:1', '출결 입력 패널'));
+  const minBtn = h('button', 'background:none;border:0;color:#fff;font-size:16px;cursor:pointer', '–');
+  const xBtn = h('button', 'background:none;border:0;color:#fff;font-size:16px;cursor:pointer', '×');
+  head.append(minBtn, xBtn); panel.appendChild(head);
+  const body = h('div', 'display:flex;flex-direction:column;min-height:0;flex:1');
+  const info = h('div', 'padding:8px 12px;border-bottom:1px solid #e3e6ee;background:#f6f8fc');
+  body.appendChild(info);
+  const opt = h('label', 'display:flex;gap:6px;align-items:center;padding:6px 12px;border-bottom:1px solid #e3e6ee');
+  const autoDate = h('input'); autoDate.type = 'checkbox'; autoDate.checked = true;
+  opt.append(autoDate, h('span', '', '날짜 자동 이동 (끄면 지금 화면 날짜에만 입력)'));
+  body.appendChild(opt);
+  const opt2 = h('label', 'display:flex;gap:6px;align-items:center;padding:6px 12px;border-bottom:1px solid #e3e6ee');
+  const autoSave = h('input'); autoSave.type = 'checkbox'; autoSave.checked = true;
+  opt2.append(autoSave, h('span', '', '입력 후 자동 저장 + 저장 확인'));
+  body.appendChild(opt2);
+  const bar = h('div', 'display:flex;gap:6px;padding:8px 12px;border-bottom:1px solid #e3e6ee');
+  const allBtn = h('button', 'flex:1;border:0;background:#12a150;color:#fff;border-radius:6px;padding:6px;cursor:pointer;font-weight:700', '▶ 전체 자동 실행');
+  const stopBtn = h('button', 'border:1px solid #d92d20;background:#fff;color:#d92d20;border-radius:6px;padding:6px 10px;cursor:pointer', '■ 중지');
+  bar.append(allBtn, stopBtn); body.appendChild(bar);
+  const list = h('div', 'overflow:auto;max-height:30vh;border-bottom:1px solid #e3e6ee');
+  body.appendChild(list);
+  const logBox = h('div', 'overflow:auto;flex:1;min-height:80px;max-height:22vh;padding:8px 12px;font-size:12px;background:#fbfcfe');
+  body.appendChild(logBox);
+  body.appendChild(h('div', 'padding:8px 12px;font-size:12px;color:#b25e00;background:#fff7e8', '실패가 있는 날은 저장하지 않고 멈춰요. 출결마감은 누르지 않아요. 끝나면 나이스에서 전체를 확인하세요.'));
+  panel.appendChild(body);
+  document.body.appendChild(panel);
+  xBtn.onclick = () => panel.remove();
+  minBtn.onclick = () => { body.style.display = body.style.display === 'none' ? 'flex' : 'none'; };
+  (() => { let sx, sy, ox, oy; head.addEventListener('mousedown', e => { if (e.target.tagName === 'BUTTON') return; const r = panel.getBoundingClientRect(); sx = e.clientX; sy = e.clientY; ox = r.left; oy = r.top;
+    const mv = ev => { panel.style.left = (ox + ev.clientX - sx) + 'px'; panel.style.top = (oy + ev.clientY - sy) + 'px'; panel.style.right = 'auto'; panel.style.bottom = 'auto'; };
+    const up = () => { document.removeEventListener('mousemove', mv); document.removeEventListener('mouseup', up); };
+    document.addEventListener('mousemove', mv); document.addEventListener('mouseup', up); }); })();
+
+  const log = (msg, kind) => { const d = h('div', 'color:' + (kind === 'err' ? '#d92d20' : kind === 'ok' ? '#12a150' : kind === 'warn' ? '#b25e00' : '#333'), msg); logBox.appendChild(d); logBox.scrollTop = logBox.scrollHeight; };
+  const refreshInfo = () => {
+    try { const c = ctx(); const grd = c.dm.getValue('grd'), cls = c.dm.getValue('clsCd');
+      info.textContent = '현재 화면: ' + (grd || '?') + '학년 ' + (cls || '?') + '반 · ' + fmt(c.dti ? c.dti.value : '') + ' · 자료 ' + DATA.length + '일';
+    } catch (e) { info.textContent = e.message; }
+  };
+
+  let busy = false;
+  const rows = [];
+  DATA.forEach((day, i) => {
+    const d = new Date(+day.ymd.slice(0,4), +day.ymd.slice(4,6) - 1, +day.ymd.slice(6,8));
+    const r = h('div', 'display:flex;align-items:center;gap:8px;padding:6px 12px;border-bottom:1px solid #f0f2f7');
+    r.appendChild(h('span', 'width:92px', day.ymd.slice(4,6) + '/' + day.ymd.slice(6,8) + ' (' + WD[d.getDay()] + ')'));
+    r.appendChild(h('span', 'flex:1;color:#667085', day.items.length + '명'));
+    const st = h('span', 'font-size:12px;color:#667085', '대기');
+    const b = h('button', 'border:1px solid #2f6bff;background:#2f6bff;color:#fff;border-radius:6px;padding:3px 10px;cursor:pointer', '입력');
+    r.append(st, b); list.appendChild(r);
+    rows.push({ st, b, done: false });
+    b.onclick = () => run(i);
+  });
+  const setState = (i, text, color) => { rows[i].st.textContent = text; rows[i].st.style.color = color; };
+
+  async function gotoDate(ymd) {
+    const c = ctx();
+    if (!c.dti) throw new Error('날짜 입력칸을 찾지 못했어요. 날짜를 직접 바꾸고 "날짜 자동 이동"을 끈 뒤 다시 눌러 주세요.');
+    if (c.ds.getRowCount() > 0 && c.ds.getValue(0, 'atteYmd') === ymd) return;
+    put(c.dti, ymd); await sleep(300);
+    clickBtn(c.btnSearch);
+    for (let k = 0; k < 50; k++) {
+      await sleep(300);
+      const c2 = ctx();
+      if (c2.ds.getRowCount() > 0 && c2.ds.getValue(0, 'atteYmd') === ymd) { await sleep(600); return; }
+    }
+    throw new Error('날짜 이동/조회를 확인하지 못했어요. 나이스에 뜬 알림창이 있으면 닫고, 날짜를 직접 조회한 뒤 "날짜 자동 이동"을 끄고 다시 눌러 주세요.');
+  }
+
+  async function fillDay(day) {
+    const c = ctx(); const { g, ds } = c;
+    if (ds.getRowCount() === 0) throw new Error('학생 목록이 없어요. [조회]를 먼저 해 주세요.');
+    const cur = ds.getValue(0, 'atteYmd');
+    if (cur !== day.ymd) throw new Error('화면 날짜(' + fmt(cur) + ')와 입력할 날짜(' + fmt(day.ymd) + ')가 달라요.');
+    if (c.clear && c.clear.value === 'Y') { put(c.clear, 'N'); log('“깨끗이” 체크를 해제했어요.', 'warn'); }
+    let ok = 0, skip = 0, fail = 0; const filled = [];
+    for (const it of day.items) {
+      const tag = it.no + '번 ' + it.label;
+      const row = rowOf(ds, it.no);
+      if (row < 0) { log('✖ ' + tag + ': 이 날짜 목록에 해당 번호가 없어요', 'err'); fail++; continue; }
+      if (it.name) { const nm = String(ds.getValue(row, 'stuFlnm') || '').replace(/\s/g, ''); if (nm && nm !== it.name.replace(/\s/g, '')) { log('✖ ' + tag + ': 나이스 명단의 이름과 달라서 건너뜀 (번호 확인)', 'err'); fail++; continue; } }
+      put(c.cmb, it.code); put(c.slot, it.reason || ''); await sleep(250);
+      if (String(c.cmb.value) !== it.code) { log('✖ ' + tag + ': 출결구분 선택 실패', 'err'); fail++; continue; }
+      const targets = it.absent ? ['chulgyulGb'] : it.cols;
+      let status = 'ok';
+      for (const col of targets) {
+        const before = ds.getValue(row, col) || '';
+        if (it.absent && before === it.label) { log('– ' + tag + ': 이미 입력되어 있어 건너뜀'); status = 'skip'; continue; }
+        if (before !== '') { log('! ' + tag + ': ' + COL_NM(col) + ' 칸에 이미 "' + before + '"가 있어 건너뜀 (직접 확인)', 'warn'); status = 'skip'; continue; }
+        const el = findCell(c, it.no, col, row);
+        if (!el) { log('✖ ' + tag + ': ' + COL_NM(col) + ' 칸을 찾지 못했어요', 'err'); status = 'fail'; break; }
+        const s0 = snap(ds); fire(el); await sleep(450);
+        const s1 = snap(ds);
+        const changed = s1.map((v, k) => v !== s0[k] ? k : -1).filter(k => k >= 0);
+        if (changed.some(k => k !== row)) throw new Error('다른 학생 칸이 바뀌었어요! 저장하지 말고 나이스 [조회]를 다시 눌러 되돌린 뒤 알려 주세요.');
+        if (!changed.length) { log('✖ ' + tag + ': ' + COL_NM(col) + ' 클릭이 반영되지 않았어요', 'err'); status = 'fail'; break; }
+      }
+      if (status !== 'fail' && it.reason && (ds.getValue(row, 'atteRmkCn') || '') !== it.reason) {
+        try { g.setCellValue(row, cellIdx(g, 'atteRmkCn'), it.reason, true); } catch (e) {}
+        if ((ds.getValue(row, 'atteRmkCn') || '') !== it.reason) { try { ds.setValue(row, 'atteRmkCn', it.reason); } catch (e) {} }
+      }
+      if (status === 'ok') { ok++; filled.push(it); log('✔ ' + tag + (it.absent ? '' : ' (' + it.cols.map(COL_NM).join(',') + ')') + (it.reason ? ' · ' + it.reason : ''), 'ok'); }
+      else if (status === 'skip') skip++; else fail++;
+    }
+    put(c.cmb, ''); put(c.slot, '');
+    return { ok, skip, fail, filled };
+  }
+
+  /* 나이스 알림창(확인/예) 자동 처리 + 서버 응답 대기 */
+  const OK_TXT = ['예', '확인', 'OK', '저장'];
+  function handleDialogs(msgs) {
+    let clicked = false;
+    document.querySelectorAll('.cl-dialog, [role="dialog"], [role="alertdialog"]').forEach(dlg => {
+      if (panel.contains(dlg) || dlg.dataset.neisHelperDone || !dlg.offsetParent) return;
+      const btns = [...dlg.querySelectorAll('.cl-button, button, [role="button"]')].filter(b => b.offsetParent);
+      let pick = null;
+      for (const t of OK_TXT) { pick = btns.find(b => (b.textContent || '').trim() === t); if (pick) break; }
+      if (!pick) return;
+      let msg = (dlg.textContent || '').replace(/\s+/g, ' ');
+      btns.forEach(b => { msg = msg.replace((b.textContent || '').trim(), ''); });
+      msgs.push(msg.trim().slice(0, 120));
+      dlg.dataset.neisHelperDone = '1'; fire(pick); clicked = true;
+    });
+    return clicked;
+  }
+  async function act(doClick, sub, timeout) {
+    const msgs = []; let state = 'wait';
+    const onOk = () => { if (state === 'wait') state = 'done'; };
+    const onErr = () => { state = 'error'; };
+    try { sub.addEventListener('submit-success', onOk); sub.addEventListener('submit-done', onOk); sub.addEventListener('submit-error', onErr); } catch (e) {}
+    const oc = window.confirm, oa = window.alert;
+    window.confirm = m => { msgs.push(String(m)); return true; };
+    window.alert = m => { msgs.push(String(m)); };
+    let quiet = 0;
+    try {
+      doClick();
+      for (let t = 0; t < timeout; t += 300) {
+        await sleep(300);
+        if (handleDialogs(msgs)) quiet = 0; else quiet += 300;
+        if (state !== 'wait' && quiet >= 1500) break;
+      }
+    } finally {
+      window.confirm = oc; window.alert = oa;
+      try { sub.removeEventListener('submit-success', onOk); sub.removeEventListener('submit-done', onOk); sub.removeEventListener('submit-error', onErr); } catch (e) {}
+    }
+    return { state, msgs };
+  }
+
+  async function saveAndVerify(day, filled) {
+    let c = ctx();
+    log('저장 중…');
+    const sv = await act(() => clickBtn(c.btnSave), c.subSave, 20000);
+    sv.msgs.filter(Boolean).forEach(m => log('  나이스: ' + m));
+    if (sv.state === 'error') throw new Error('나이스가 저장 오류를 알렸어요. 위 메시지를 확인해 주세요.');
+    if (sv.state === 'wait') throw new Error('저장 완료 신호를 받지 못했어요. 나이스 화면을 확인해 주세요.');
+    log('저장 확인을 위해 다시 조회해요…');
+    c = ctx();
+    const rq = await act(() => clickBtn(c.btnSearch), c.subList, 20000);
+    rq.msgs.filter(Boolean).forEach(m => log('  나이스: ' + m));
+    await sleep(500);
+    c = ctx(); const ds = c.ds;
+    if (!ds.getRowCount() || ds.getValue(0, 'atteYmd') !== day.ymd) throw new Error('다시 조회한 화면의 날짜가 달라요. 직접 확인해 주세요.');
+    let bad = 0;
+    for (const it of filled) {
+      const row = rowOf(ds, it.no);
+      let okv = row >= 0;
+      if (okv && it.absent) okv = (ds.getValue(row, 'chulgyulGb') || '') === it.label;
+      if (okv && !it.absent) okv = it.cols.every(col => (ds.getValue(row, col) || '') !== '');
+      if (okv && it.reason) okv = String(ds.getValue(row, 'atteRmkCn') || '').indexOf(it.reason) > -1;
+      if (!okv) { bad++; log('✖ 저장 확인 실패: ' + it.no + '번 ' + it.label, 'err'); }
+    }
+    if (bad) throw new Error(bad + '건이 저장되지 않았어요. 나이스 화면에서 직접 확인해 주세요.');
+    log('✔ ' + fmt(day.ymd) + ' 저장 확인 완료 (' + filled.length + '건)', 'ok');
+  }
+
+  async function doDay(i) {
+    const day = DATA[i];
+    log('── ' + fmt(day.ymd) + ' 시작');
+    setState(i, '진행 중', '#2f6bff');
+    try {
+      if (autoDate.checked) await gotoDate(day.ymd);
+      const r = await fillDay(day);
+      log(fmt(day.ymd) + ' 입력: 성공 ' + r.ok + ' · 건너뜀 ' + r.skip + ' · 실패 ' + r.fail, r.fail ? 'warn' : 'ok');
+      if (r.fail) { setState(i, '실패-미저장', '#b25e00'); log('실패가 있어 저장하지 않았어요. 화면을 확인하고 직접 고치거나 [조회]로 되돌려 주세요.', 'warn'); return false; }
+      if (!autoSave.checked) { setState(i, '저장하세요', '#12a150'); return true; }
+      if (!r.ok) { setState(i, '변경 없음', '#667085'); rows[i].done = true; return true; }
+      await saveAndVerify(day, r.filled);
+      setState(i, '저장 완료', '#12a150'); rows[i].done = true;
+      return true;
+    } catch (e) {
+      log('✖ ' + e.message, 'err'); setState(i, '오류', '#d92d20');
+      try { const c = ctx(); put(c.cmb, ''); put(c.slot, ''); } catch (_) {}
+      return false;
+    }
+  }
+
+  let stopReq = false;
+  const lock = on => { busy = on; rows.forEach(r => r.b.disabled = on); allBtn.disabled = on; };
+  async function run(i) {
+    if (busy) return; lock(true);
+    await doDay(i);
+    refreshInfo(); lock(false);
+  }
+  allBtn.onclick = async () => {
+    if (busy) return;
+    if (!autoSave.checked && !confirm('자동 저장이 꺼져 있어요. 저장하지 않고 다음 날짜로 넘어가면 입력이 사라질 수 있어요. 자동 저장을 켤까요?')) return;
+    autoSave.checked = true; autoDate.checked = true;
+    stopReq = false; lock(true);
+    let n = 0;
+    for (let i = 0; i < DATA.length; i++) {
+      if (rows[i].done) continue;
+      if (stopReq) { log('사용자가 중지했어요.', 'warn'); break; }
+      const ok = await doDay(i); n++;
+      refreshInfo();
+      if (!ok) { log('문제가 생겨 여기서 멈췄어요. 해결 후 다시 [전체 자동 실행]을 누르면 남은 날짜부터 이어서 해요.', 'warn'); break; }
+    }
+    if (rows.every(r => r.done)) log('🎉 모든 날짜 입력·저장이 끝났어요. 나이스에서 전체를 확인한 뒤 출결마감을 진행하세요.', 'ok');
+    lock(false);
+  };
+  stopBtn.onclick = () => { stopReq = true; log('지금 날짜가 끝나면 멈춰요…', 'warn'); };
+
+  refreshInfo();
+  log('준비 완료. [전체 자동 실행] 또는 날짜 옆 [입력]을 누르세요. 처음엔 한 날짜만 해보길 권해요.');
+}
+
+/* ===================== 도우미 페이지 ===================== */
+const TYPES = {'질병결석':'01','미인정결석':'02','기타결석':'03','출석인정결석':'04','질병지각':'11','미인정지각':'12','기타지각':'13','출석인정지각':'14','질병조퇴':'21','미인정조퇴':'22','기타조퇴':'23','출석인정조퇴':'24','질병결과':'31','미인정결과':'32','기타결과':'33','출석인정결과':'34'};
+const COL_NM = c => c === 'chulgyulGb' ? '마감(하루 전체)' : c === 'jo' ? '조회' : c === 'jong' ? '종례' : c.replace('gyo','') + '교시';
+const $ = id => document.getElementById(id);
+const yearEl = $('year'); yearEl.value = new Date().getFullYear();
+let DATA = [];
+
+function parseCSV(text) {
+  const lines = text.replace(/\r/g, '').split('\n').filter(l => l.trim() !== '');
+  return lines.map(line => {
+    const delim = line.includes('\t') ? '\t' : ',';
+    const out = []; let cur = '', q = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (q) { if (ch === '"') { if (line[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += ch; }
+      else if (ch === '"') q = true;
+      else if (ch === delim) { out.push(cur); cur = ''; }
+      else cur += ch;
+    }
+    out.push(cur);
+    return out.map(s => s.trim());
+  });
+}
+function normDate(s, y) {
+  s = (s || '').replace(/\s/g, '').replace(/\.$/, '');
+  let m = s.match(/^(\d{4})[-./](\d{1,2})[-./](\d{1,2})$/);
+  if (m) return mk(+m[1], +m[2], +m[3]);
+  m = s.match(/^(\d{4})(\d{2})(\d{2})$/);
+  if (m) return mk(+m[1], +m[2], +m[3]);
+  m = s.match(/^(\d{1,2})[-./](\d{1,2})$/);
+  if (m) return mk(+y, +m[1], +m[2]);
+  return null;
+  function mk(Y, M, D) { const d = new Date(Y, M - 1, D); if (d.getFullYear() !== Y || d.getMonth() !== M - 1 || d.getDate() !== D) return null; return '' + Y + String(M).padStart(2, '0') + String(D).padStart(2, '0'); }
+}
+function parsePeriods(s) {
+  s = (s || '').replace(/교시/g, '').replace(/\s/g, '');
+  if (!s) return [];
+  const out = [];
+  for (const part of s.split(/[,·;]/)) {
+    if (!part) continue;
+    if (part === '조회') { out.push('jo'); continue; }
+    if (part === '종례') { out.push('jong'); continue; }
+    const m = part.match(/^(\d{1,2})(?:[-~](\d{1,2}))?$/);
+    if (!m) return null;
+    const a = +m[1], b = m[2] ? +m[2] : a;
+    if (a < 1 || b > 10 || a > b) return null;
+    for (let i = a; i <= b; i++) out.push('gyo' + i);
+  }
+  return [...new Set(out)];
+}
+
+function analyze() {
+  const text = $('src').value;
+  try { localStorage.setItem('neisAttSrc', text); } catch (e) {}
+  const recs = parseCSV(text);
+  const tbody = $('tbl').querySelector('tbody'); tbody.innerHTML = '';
+  const byDate = {}; const seen = {}; let errs = 0, good = 0;
+  // 출결앱 CSV(기록일시,날짜,학생번호,학생이름,출결유형,출결사유,출결상세,교시,메모)인지 확인
+  const head = recs[0] || [];
+  const appMode = head.includes('출결유형') && head.includes('학생번호');
+  const H = n => head.indexOf(n);
+  const rowsIn = [];
+  recs.forEach((r, idx) => {
+    if (idx === 0 && (appMode || /날짜/.test(r[0] || ''))) return;
+    if (appMode) {
+      const g = n => (H(n) >= 0 ? (r[H(n)] || '') : '').trim();
+      const type = g('출결유형'), rs = g('출결사유');
+      const pre = rs === '인정' ? '출석인정' : rs;
+      rowsIn.push({ dRaw: g('날짜'), noRaw: g('학생번호'), name: g('학생이름'),
+        typeRaw: rs ? pre + type : '', noReason: !rs, typeShown: (rs ? rs + ' ' : '') + type,
+        perRaw: g('교시'), reason: [g('출결상세'), g('메모')].filter(Boolean).join(' ') });
+    } else {
+      const [dRaw, noRaw, typeRaw, perRaw, reason = ''] = r;
+      rowsIn.push({ dRaw, noRaw, typeRaw, perRaw, reason, name: '' });
+    }
+  });
+  // 달 선택 목록 만들기
+  const monthSel = $('month'), keepM = monthSel.value;
+  const months = [...new Set(rowsIn.map(x => normDate(x.dRaw, yearEl.value)).filter(Boolean).map(y => y.slice(0, 6)))].sort();
+  monthSel.innerHTML = '<option value="">전체</option>' + months.map(m => '<option value="' + m + '">' + m.slice(0, 4) + '년 ' + (+m.slice(4)) + '월</option>').join('');
+  monthSel.value = months.includes(keepM) ? keepM : (months.length ? months[months.length - 1] : '');
+  const pickM = monthSel.value;
+  rowsIn.forEach(x => {
+    const { dRaw, noRaw, perRaw } = x; const reason = x.reason || '';
+    const problems = [];
+    const ymd = normDate(dRaw, yearEl.value);
+    if (pickM && ymd && ymd.slice(0, 6) !== pickM) return;
+    const typeRaw = x.typeRaw;
+    if (x.noReason) problems.push('사유 구분(질병/미인정/기타/인정) 없음');
+    if (!ymd) problems.push('날짜 형식');
+    const no = String(noRaw || '').replace(/번$/, '').replace(/^0+(?=\d)/, '');
+    if (!/^\d{1,3}$/.test(no)) problems.push('번호');
+    const label = (typeRaw || '').replace(/\s/g, '');
+    const code = TYPES[label];
+    if (!code && !x.noReason) problems.push('구분');
+    const absent = code && code[0] === '0';
+    let cols = [];
+    if (code && !absent) {
+      const p = parsePeriods(perRaw);
+      if (p === null) problems.push('교시 형식');
+      else if (!p.length) problems.push('교시 필요');
+      else cols = p;
+    }
+    if (ymd && no && !problems.length) {
+      const key = ymd + '-' + no;
+      if (seen[key] && (absent || seen[key] === 'absent')) problems.push('같은 날 결석 중복');
+      seen[key] = absent ? 'absent' : (seen[key] || 'part');
+    }
+    const tr = document.createElement('tr');
+    if (problems.length) { tr.className = 'bad'; errs++; } else good++;
+    const cells = [ymd ? ymd.slice(0,4) + '.' + ymd.slice(4,6) + '.' + ymd.slice(6) : (dRaw || ''), (no || noRaw || '') + (x.name ? ' ' + x.name : ''), code ? label : (x.typeShown || typeRaw || ''), absent ? COL_NM('chulgyulGb') : cols.map(COL_NM).join(', '), reason, problems.length ? '오류: ' + problems.join(', ') : '정상'];
+    cells.forEach(v => { const td = document.createElement('td'); td.textContent = v; tr.appendChild(td); });
+    tbody.appendChild(tr);
+    if (!problems.length) {
+      (byDate[ymd] = byDate[ymd] || []).push({ no: +no, name: x.name || '', code, label, absent: !!absent, cols, reason });
+    }
+  });
+  DATA = Object.keys(byDate).sort().map(ymd => ({ ymd, items: byDate[ymd].sort((a, b) => a.no - b.no) }));
+  const sum = $('summary'); sum.innerHTML = '';
+  const pill = (t, c) => { const s = document.createElement('span'); s.className = 'pill ' + (c || ''); s.textContent = t; sum.appendChild(s); };
+  if (!good && !errs) pill('자료를 넣으면 여기에서 검사해요');
+  else { pill('정상 ' + good + '건', 'ok'); pill(DATA.length + '일'); if (errs) pill('오류 ' + errs + '건', 'err'); }
+  const can = good > 0 && errs === 0;
+  $('copy').disabled = !can;
+  $('copyHint').textContent = can ? DATA.length + '일 치 자료가 들어간 코드를 복사해요' : (errs ? '빨간 줄의 오류를 고쳐 주세요' : '자료를 먼저 넣어 주세요');
+  $('codeOut').value = can ? buildCode() : '';
+}
+function buildCode() { return '(' + RUNNER.toString() + ')(' + JSON.stringify(DATA) + ');'; }
+
+function toast(t) { const el = $('toast'); el.textContent = t; el.classList.add('show'); setTimeout(() => el.classList.remove('show'), 2200); }
+$('copy').onclick = async () => {
+  const code = buildCode();
+  try { await navigator.clipboard.writeText(code); toast('복사했어요. 나이스 콘솔에 붙여넣으세요.'); }
+  catch (e) { const t = $('codeOut'); t.value = code; t.closest('details').open = true; t.select(); try { document.execCommand('copy'); toast('복사했어요.'); } catch (_) { toast('아래 칸에서 직접 복사해 주세요.'); } }
+};
+$('tpl').onclick = () => {
+  const y = yearEl.value || new Date().getFullYear();
+  const csv = '\uFEFF날짜,번호,구분,교시,사유\n' + y + '-11-03,1,질병결석,,감기\n' + y + '-11-05,7,미인정지각,1,\n' + y + '-11-10,12,질병결과,3-4,병원 진료\n';
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = '출결양식.csv'; a.click();
+};
+$('clearBtn').onclick = () => { $('src').value = ''; analyze(); };
+async function decryptText(txt, pw) {
+  const raw = Uint8Array.from(atob(txt.replace(/^NEISATT1\s*/, '').replace(/\s/g, '')), c => c.charCodeAt(0));
+  const salt = raw.slice(0, 16), iv = raw.slice(16, 28), ct = raw.slice(28);
+  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveKey']);
+  const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: 200000, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+  return new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct));
+}
+const PW_KEY = 'neisAttCsvPw';
+try { const k = localStorage.getItem(PW_KEY); if (k) { $('pw').value = k; $('pwKeep').checked = true; } } catch (e) {}
+$('pwKeep').onchange = () => { try { if ($('pwKeep').checked && $('pw').value) localStorage.setItem(PW_KEY, $('pw').value); else localStorage.removeItem(PW_KEY); } catch (e) {} };
+$('pw').addEventListener('change', () => $('pwKeep').onchange());
+$('file').onchange = e => {
+  const f = e.target.files[0]; if (!f) return;
+  f.arrayBuffer().then(async buf => {
+    let t = new TextDecoder('utf-8').decode(buf);
+    if (t.startsWith('NEISATT1')) {
+      let pw = $('pw').value;
+      if (!pw) { pw = prompt('암호화된 출결 파일이에요. 비밀번호를 입력하세요.') || ''; if (!pw) return; $('pw').value = pw; $('pwKeep').onchange(); }
+      try { t = await decryptText(t, pw); }
+      catch (err) { toast('비밀번호가 맞지 않아요.'); $('pw').focus(); return; }
+      toast('🔓 암호를 풀었어요.');
+    } else if (t.includes('\uFFFD')) { try { t = new TextDecoder('euc-kr').decode(buf); } catch (_) {} }
+    $('src').value = t.replace(/^\uFEFF/, ''); analyze();
+  });
+  e.target.value = '';
+};
+$('src').addEventListener('input', analyze);
+$('month').addEventListener('change', analyze);
+yearEl.addEventListener('input', analyze);
+try { const s = localStorage.getItem('neisAttSrc'); if (s) $('src').value = s; } catch (e) {}
+analyze();
+</script>
+</body>
+</html>
