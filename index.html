@@ -300,13 +300,12 @@ async function RUNNER(CORE) {
   async function gotoDate(ymd) {
     const c = ctx();
     if (!c.dti) throw new Error('날짜 입력칸을 찾지 못했어요. 날짜를 직접 바꾸고 "날짜 자동 이동"을 끈 뒤 다시 눌러 주세요.');
-    if (c.ds.getRowCount() > 0 && c.ds.getValue(0, 'atteYmd') === ymd) return;
     put(c.dti, ymd); await sleep(300);
-    clickBtn(c.btnSearch);
-    for (let k = 0; k < 50; k++) {
-      await sleep(300);
+    await act(() => clickBtn(c.btnSearch), c.subList, 15000);
+    for (let k = 0; k < 30; k++) {
       const c2 = ctx();
       if (c2.ds.getRowCount() > 0 && c2.ds.getValue(0, 'atteYmd') === ymd) { await sleep(600); return; }
+      await sleep(300);
     }
     throw new Error('날짜 이동/조회를 확인하지 못했어요. 나이스에 뜬 알림창이 있으면 닫고, 날짜를 직접 조회한 뒤 "날짜 자동 이동"을 끄고 다시 눌러 주세요.');
   }
@@ -325,25 +324,42 @@ async function RUNNER(CORE) {
       if (it.name) { const nm = String(ds.getValue(row, 'stuFlnm') || '').replace(/\s/g, ''); if (nm && nm !== it.name.replace(/\s/g, '')) { log('✖ ' + tag + ': 나이스 명단의 이름과 달라서 건너뜀 (번호 확인)', 'err'); fail++; continue; } }
       put(c.cmb, it.code); put(c.slot, it.reason || ''); await sleep(250);
       if (String(c.cmb.value) !== it.code) { log('✖ ' + tag + ': 출결구분 선택 실패', 'err'); fail++; continue; }
-      const targets = it.absent ? ['chulgyulGb'] : it.cols;
-      let status = 'ok';
-      for (const col of targets) {
-        const before = ds.getValue(row, col) || '';
-        if (it.absent && before === it.label) { log('– ' + tag + ': 이미 입력되어 있어 건너뜀'); status = 'skip'; continue; }
-        if (before !== '') { log('! ' + tag + ': ' + COL_NM(col) + ' 칸에 이미 "' + before + '"가 있어 건너뜀 (직접 확인)', 'warn'); status = 'skip'; continue; }
+      const want = it.absent ? ['jo', 'gyo1','gyo2','gyo3','gyo4','gyo5','gyo6','gyo7','gyo8','gyo9','gyo10', 'jong'] : it.cols;
+      const targets = [];
+      for (const col of want) {
         const el = findCell(c, it.no, col, row);
-        if (!el) { log('✖ ' + tag + ': ' + COL_NM(col) + ' 칸을 찾지 못했어요', 'err'); status = 'fail'; break; }
+        const visible = el && el.getClientRects().length > 0;
+        if (!visible) continue;                       // 그날 없는 교시는 건너뜀
+        if (it.absent && /^gyo/.test(col)) {
+          const n = col.slice(3);
+          if (!(ds.getValue(row, 'estblSbjtNm' + n) || ds.getValue(row, 'g' + n) === 'Y')) continue;
+        }
+        targets.push(col);
+      }
+      it.used = targets;
+      let status = 'ok', clicked = false;
+      if (!targets.length) { log('✖ ' + tag + ': 입력할 교시 칸을 찾지 못했어요', 'err'); status = 'fail'; }
+      for (const col of targets) {
+        if (status === 'fail') break;
+        const before = ds.getValue(row, col) || '';
+        if (before !== '') {
+          if (clicked) continue;                      // 앞 칸을 누르면서 나이스가 자동으로 채운 칸
+          log('! ' + tag + ': ' + COL_NM(col) + ' 칸에 이미 "' + before + '"가 있어 건너뜀 (직접 확인)', 'warn'); status = 'skip'; break;
+        }
+        const el = findCell(c, it.no, col, row);
         const s0 = snap(ds); fire(el); await sleep(450);
+        if (closeStrayDialogs()) { log('✖ ' + tag + ': ' + COL_NM(col) + ' 칸에서 예상 못한 창이 떠서 닫았어요', 'err'); status = 'fail'; break; }
         const s1 = snap(ds);
         const changed = s1.map((v, k) => v !== s0[k] ? k : -1).filter(k => k >= 0);
         if (changed.some(k => k !== row)) throw new Error('다른 학생 칸이 바뀌었어요! 저장하지 말고 나이스 [조회]를 다시 눌러 되돌린 뒤 알려 주세요.');
         if (!changed.length) { log('✖ ' + tag + ': ' + COL_NM(col) + ' 클릭이 반영되지 않았어요', 'err'); status = 'fail'; break; }
+        clicked = true;
       }
       if (status !== 'fail' && it.reason && (ds.getValue(row, 'atteRmkCn') || '') !== it.reason) {
         try { g.setCellValue(row, cellIdx(g, 'atteRmkCn'), it.reason, true); } catch (e) {}
         if ((ds.getValue(row, 'atteRmkCn') || '') !== it.reason) { try { ds.setValue(row, 'atteRmkCn', it.reason); } catch (e) {} }
       }
-      if (status === 'ok') { ok++; filled.push(it); log('✔ ' + tag + (it.absent ? '' : ' (' + it.cols.map(COL_NM).join(',') + ')') + (it.reason ? ' · ' + it.reason : ''), 'ok'); }
+      if (status === 'ok') { ok++; filled.push(it); log('✔ ' + tag + ' (' + (it.absent ? '하루 전체' : it.used.map(COL_NM).join(',')) + ')' + (it.reason ? ' · ' + it.reason : ''), 'ok'); }
       else if (status === 'skip') skip++; else fail++;
     }
     put(c.cmb, ''); put(c.slot, '');
@@ -352,6 +368,16 @@ async function RUNNER(CORE) {
 
   /* 나이스 알림창(확인/예) 자동 처리 + 서버 응답 대기 */
   const OK_TXT = ['예', '확인', 'OK', '저장'];
+  function closeStrayDialogs() {
+    let closed = false;
+    document.querySelectorAll('.cl-dialog, [role="dialog"], [role="alertdialog"]').forEach(dlg => {
+      if (panel.contains(dlg) || !dlg.offsetParent) return;
+      const btns = [...dlg.querySelectorAll('.cl-button, button, [role="button"]')].filter(b => b.offsetParent);
+      const cl = btns.find(b => ['닫기', '취소'].includes((b.textContent || '').trim()));
+      if (cl) { fire(cl); closed = true; }
+    });
+    return closed;
+  }
   function handleDialogs(msgs) {
     let clicked = false;
     document.querySelectorAll('.cl-dialog, [role="dialog"], [role="alertdialog"]').forEach(dlg => {
@@ -408,8 +434,7 @@ async function RUNNER(CORE) {
     for (const it of filled) {
       const row = rowOf(ds, it.no);
       let okv = row >= 0;
-      if (okv && it.absent) okv = (ds.getValue(row, 'chulgyulGb') || '') === it.label;
-      if (okv && !it.absent) okv = it.cols.every(col => (ds.getValue(row, col) || '') !== '');
+      if (okv) okv = (it.used || it.cols).every(col => (ds.getValue(row, col) || '') !== '');
       if (okv && it.reason) okv = String(ds.getValue(row, 'atteRmkCn') || '').indexOf(it.reason) > -1;
       if (!okv) { bad++; log('✖ 저장 확인 실패: ' + it.no + '번 ' + it.label, 'err'); }
     }
@@ -470,7 +495,7 @@ async function RUNNER(CORE) {
 /* ===================== 공통: 파일 해석 (메모리에서만 처리, 어디에도 저장하지 않음) ===================== */
 function CORE() {
 const TYPES = {'질병결석':'01','미인정결석':'02','기타결석':'03','출석인정결석':'04','질병지각':'11','미인정지각':'12','기타지각':'13','출석인정지각':'14','질병조퇴':'21','미인정조퇴':'22','기타조퇴':'23','출석인정조퇴':'24','질병결과':'31','미인정결과':'32','기타결과':'33','출석인정결과':'34'};
-const COL_NM = c => c === 'chulgyulGb' ? '마감(하루 전체)' : c === 'jo' ? '조회' : c === 'jong' ? '종례' : c.replace('gyo','') + '교시';
+const COL_NM = c => c === 'chulgyulGb' ? '하루 전체(조회~종례)' : c === 'jo' ? '조회' : c === 'jong' ? '종례' : c.replace('gyo','') + '교시';
 function parseCSV(text) {
   const lines = text.replace(/\r/g, '').split('\n').filter(l => l.trim() !== '');
   return lines.map(line => {
