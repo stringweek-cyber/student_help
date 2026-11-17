@@ -64,7 +64,7 @@ code{background:var(--soft);padding:1px 5px;border-radius:5px;font-size:.88em}
 </head>
 <body>
 <div class="wrap">
-  <h1>나이스 출결 도우미 <span style="font-size:.9rem;color:var(--muted)">v7</span></h1>
+  <h1>나이스 출결 도우미 <span style="font-size:.9rem;color:var(--muted)">v8</span></h1>
   <p class="sub">출결앱 자료를 나이스 일일출결에 자동 입력해요.</p>
 
   <div class="card">
@@ -84,7 +84,7 @@ code{background:var(--soft);padding:1px 5px;border-radius:5px;font-size:.88em}
     <h2><span class="step">2</span>나이스에서 실행</h2>
     <div class="bm-row">
       <a id="bm" class="bm" href="#">📋 나이스 출결입력</a>
-      <span class="pill" style="font-weight:700">v7</span>
+      <span class="pill" style="font-weight:700">v8</span>
       <span class="hint">← 이 버튼을 즐겨찾기 막대로 끌어다 놓기 (처음 한 번)</span>
     </div>
     <ol class="guide">
@@ -110,7 +110,7 @@ code{background:var(--soft);padding:1px 5px;border-radius:5px;font-size:.88em}
 async function RUNNER(CORE) {
   const K = CORE();
   let DATA = [], TEXT = '', pickM = null;
-  const VER = 'v7';
+  const VER = 'v8';
   const PANEL_ID = 'neisAttHelperPanel';
   const old = document.getElementById(PANEL_ID); if (old) old.remove();
   const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -338,7 +338,13 @@ async function RUNNER(CORE) {
       const tag = it.no + '번 ' + it.label;
       const row = rowOf(ds, it.no);
       if (row < 0) { log('✖ ' + tag + ': 이 날짜 목록에 해당 번호가 없어요', 'err'); fail++; continue; }
-      if (it.name) { const nm = String(ds.getValue(row, 'stuFlnm') || '').replace(/\s/g, ''); if (nm && nm !== it.name.replace(/\s/g, '')) { log('✖ ' + tag + ': 나이스 명단의 이름과 달라서 건너뜀 (번호 확인)', 'err'); fail++; continue; } }
+      if (it.name) {
+        const nm = String(ds.getValue(row, 'stuFlnm') || '').replace(/\s/g, ''), an = it.name.replace(/\s/g, '');
+        if (nm && nm !== an) {
+          if (!/[가-힣]/.test(nm)) log('! ' + tag + ': 나이스 이름이 영문(외국어)이라 번호로만 확인했어요', 'warn');
+          else { log('✖ ' + tag + ': 나이스 명단의 이름과 달라서 건너뜀 (번호 확인)', 'err'); fail++; continue; }
+        }
+      }
       put(c.cmb, it.code); put(c.slot, it.reason || ''); await sleep(80);
       if (String(c.cmb.value) !== it.code) { log('✖ ' + tag + ': 출결구분 선택 실패', 'err'); fail++; continue; }
       const want = it.absent ? ['jo', 'gyo1','gyo2','gyo3','gyo4','gyo5','gyo6','gyo7','gyo8','gyo9','gyo10', 'jong'] : it.cols;
