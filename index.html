@@ -64,7 +64,7 @@ code{background:var(--soft);padding:1px 5px;border-radius:5px;font-size:.88em}
 </head>
 <body>
 <div class="wrap">
-  <h1>나이스 출결 도우미 <span style="font-size:.9rem;color:var(--muted)">v8</span></h1>
+  <h1>나이스 출결 도우미 <span style="font-size:.9rem;color:var(--muted)">v10</span></h1>
   <p class="sub">출결앱 자료를 나이스 일일출결에 자동 입력해요.</p>
 
   <div class="card">
@@ -84,7 +84,7 @@ code{background:var(--soft);padding:1px 5px;border-radius:5px;font-size:.88em}
     <h2><span class="step">2</span>나이스에서 실행</h2>
     <div class="bm-row">
       <a id="bm" class="bm" href="#">📋 나이스 출결입력</a>
-      <span class="pill" style="font-weight:700">v8</span>
+      <span class="pill" style="font-weight:700">v10</span>
       <span class="hint">← 이 버튼을 즐겨찾기 막대로 끌어다 놓기 (처음 한 번)</span>
     </div>
     <ol class="guide">
@@ -110,7 +110,7 @@ code{background:var(--soft);padding:1px 5px;border-radius:5px;font-size:.88em}
 async function RUNNER(CORE) {
   const K = CORE();
   let DATA = [], TEXT = '', pickM = null;
-  const VER = 'v8';
+  const VER = 'v10';
   const PANEL_ID = 'neisAttHelperPanel';
   const old = document.getElementById(PANEL_ID); if (old) old.remove();
   const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -380,9 +380,18 @@ async function RUNNER(CORE) {
         if (!changed.length) { log('✖ ' + tag + ': ' + COL_NM(col) + ' 클릭이 반영되지 않았어요', 'err'); status = 'fail'; break; }
         clicked = true;
       }
-      if (status !== 'fail' && it.reason && (ds.getValue(row, 'atteRmkCn') || '') !== it.reason) {
-        try { g.setCellValue(row, cellIdx(g, 'atteRmkCn'), it.reason, true); } catch (e) {}
-        if ((ds.getValue(row, 'atteRmkCn') || '') !== it.reason) { try { ds.setValue(row, 'atteRmkCn', it.reason); } catch (e) {} }
+      if (status !== 'fail') {
+        // 사유 칸에는 출결앱 사유만. 나이스가 자동으로 적는 '5교시' 같은 글은 지워요.
+        const AUTO = /^[\d,\s~-]*교시$|^조회$|^종례$/;
+        const want = it.reason || '';
+        for (let k = 0; k < 3; k++) {
+          await sleep(300);
+          const cur = String(ds.getValue(row, 'atteRmkCn') || '').trim();
+          if (cur === want) continue;
+          if (!want && cur && !AUTO.test(cur)) break;      // 사유가 없고, 원래 있던 글이면 건드리지 않음
+          try { g.setCellValue(row, cellIdx(g, 'atteRmkCn'), want, true); } catch (e) {}
+          if ((ds.getValue(row, 'atteRmkCn') || '') !== want) { try { ds.setValue(row, 'atteRmkCn', want); } catch (e) {} }
+        }
       }
       if (status === 'ok') { ok++; filled.push(it); log('✔ ' + tag + ' (' + (it.absent ? '하루 전체' : it.used.map(COL_NM).join(',')) + ')' + (it.reason ? ' · ' + it.reason : ''), 'ok'); }
       else if (status === 'skip') skip++; else fail++;
@@ -477,7 +486,7 @@ async function RUNNER(CORE) {
       const row = rowOf(ds, it.no);
       let okv = row >= 0;
       if (okv) okv = (it.used || it.cols).every(col => (ds.getValue(row, col) || '') !== '');
-      if (okv && it.reason) okv = String(ds.getValue(row, 'atteRmkCn') || '').indexOf(it.reason) > -1;
+      if (okv && it.reason) okv = String(ds.getValue(row, 'atteRmkCn') || '').trim() === it.reason;
       if (!okv) { bad++; log('✖ 저장 확인 실패: ' + it.no + '번 ' + it.label, 'err'); }
     }
     if (bad) throw new Error(bad + '건이 저장되지 않았어요. 나이스 화면에서 직접 확인해 주세요.');
