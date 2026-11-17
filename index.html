@@ -313,7 +313,8 @@ async function RUNNER(CORE) {
     const c = ctx();
     if (!c.dti) throw new Error('날짜 입력칸을 찾지 못했어요.');
     put(c.dti, ymd); await sleep(300);
-    const r = await act(() => clickBtn(c.btnSearch), c.subList, 15000);
+    const r = await act(searchWays(c), c.subList, 15000);
+    if (r.state === 'noreact') throw new Error('[조회] 버튼이 반응하지 않아요. ' + diag(ctx()));
     r.msgs.filter(Boolean).forEach(m => log('  나이스: ' + m));
     for (let k = 0; k < 30; k++) {
       const c2 = ctx();
@@ -406,17 +407,28 @@ async function RUNNER(CORE) {
     });
     return clicked;
   }
-  async function act(doClick, sub, timeout) {
-    const msgs = []; let state = 'wait';
-    const onOk = () => { if (state === 'wait') state = 'done'; };
-    const onErr = () => { state = 'error'; };
-    try { sub.addEventListener('submit-success', onOk); sub.addEventListener('submit-done', onOk); sub.addEventListener('submit-error', onErr); } catch (e) {}
+  /* 버튼 누르기: 반응(서버 요청·알림창)이 없으면 다음 방식으로 다시 시도 */
+  async function act(clicks, sub, timeout) {
+    const msgs = []; let state = 'wait', active = false;
+    const onStart = () => { active = true; };
+    const onOk = () => { active = true; if (state === 'wait') state = 'done'; };
+    const onErr = () => { active = true; state = 'error'; };
+    const EV = [['before-submit', onStart], ['receive', onStart], ['submit-success', onOk], ['submit-done', onOk], ['submit-error', onErr], ['submit-timeout', onErr]];
+    try { EV.forEach(([n, f]) => sub.addEventListener(n, f)); } catch (e) {}
     const oc = window.confirm, oa = window.alert;
-    window.confirm = m => { msgs.push(String(m)); return true; };
-    window.alert = m => { msgs.push(String(m)); };
-    let quiet = 0;
+    window.confirm = m => { active = true; msgs.push(String(m)); return true; };
+    window.alert = m => { active = true; msgs.push(String(m)); };
+    let quiet = 0, how = '';
     try {
-      doClick();
+      for (const [name, fn] of clicks) {
+        try { fn(); } catch (e) { continue; }
+        for (let t = 0; t < 3000 && !active; t += 300) {
+          await sleep(300);
+          if (handleDialogs(msgs)) active = true;
+        }
+        if (active) { how = name; break; }
+      }
+      if (!active) return { state: 'noreact', msgs, how };
       for (let t = 0; t < timeout; t += 300) {
         await sleep(300);
         if (handleDialogs(msgs)) quiet = 0; else quiet += 300;
@@ -424,21 +436,26 @@ async function RUNNER(CORE) {
       }
     } finally {
       window.confirm = oc; window.alert = oa;
-      try { sub.removeEventListener('submit-success', onOk); sub.removeEventListener('submit-done', onOk); sub.removeEventListener('submit-error', onErr); } catch (e) {}
+      try { EV.forEach(([n, f]) => sub.removeEventListener(n, f)); } catch (e) {}
     }
-    return { state, msgs };
+    return { state, msgs, how };
   }
+  const apiClick = ctrl => { if (typeof ctrl.click === 'function') ctrl.click(); else throw 0; };
+  const domClick = ctrl => { const el = dom(ctrl); if (!el) throw 0; fire(el); };
+  const searchWays = c => [['내부', () => apiClick(c.btnSearch)], ['클릭', () => domClick(c.btnSearch)], ['직접요청', () => c.subList.send()]];
+  const saveWays = c => [['내부', () => apiClick(c.btnSave)], ['클릭', () => domClick(c.btnSave)]];
 
   async function saveAndVerify(day, filled) {
     let c = ctx();
     log('저장 중…');
-    const sv = await act(() => clickBtn(c.btnSave), c.subSave, 20000);
+    const sv = await act(saveWays(c), c.subSave, 20000);
+    if (sv.state === 'noreact') throw new Error('[저장] 버튼이 반응하지 않아요. 나이스에서 직접 저장해 주세요.');
     sv.msgs.filter(Boolean).forEach(m => log('  나이스: ' + m));
     if (sv.state === 'error') throw new Error('나이스가 저장 오류를 알렸어요. 위 메시지를 확인해 주세요.');
     if (sv.state === 'wait') throw new Error('저장 완료 신호를 받지 못했어요. 나이스 화면을 확인해 주세요.');
     log('저장 확인을 위해 다시 조회해요…');
     c = ctx();
-    const rq = await act(() => clickBtn(c.btnSearch), c.subList, 20000);
+    const rq = await act(searchWays(c), c.subList, 20000);
     rq.msgs.filter(Boolean).forEach(m => log('  나이스: ' + m));
     await sleep(500);
     c = ctx(); const ds = c.ds;
