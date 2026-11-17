@@ -297,24 +297,37 @@ async function RUNNER(CORE) {
   wipeBtn.onclick = () => { if (busy) return; DATA = []; TEXT = ''; pickM = null; pwIn.value = ''; mSel.innerHTML = ''; logBox.innerHTML = ''; renderList(); refreshInfo(); log('자료를 지웠어요.'); };
   const setState = (i, text, color) => { rows[i].st.textContent = text; rows[i].st.style.color = color; };
 
+  /* 화면에 조회된 날짜: 자료의 날짜 → 조회조건 날짜 → 날짜칸 순서로 확인 (저장 기록이 없는 날은 자료 날짜가 비어 있음) */
+  const norm8 = v => String(v == null ? '' : v).replace(/\D/g, '').slice(0, 8);
+  function shownYmd(c) {
+    const a = c.ds.getRowCount() ? norm8(c.ds.getValue(0, 'atteYmd')) : '';
+    let b = ''; try { b = norm8(c.dm.getValue('atteYmd')); } catch (e) {}
+    const d = c.dti ? norm8(c.dti.value) : '';
+    return a || b || d;
+  }
+  function diag(c) {
+    let b = ''; try { b = c.dm.getValue('atteYmd'); } catch (e) {}
+    return '[학생 ' + c.ds.getRowCount() + '명 · 자료날짜 ' + (c.ds.getRowCount() ? c.ds.getValue(0, 'atteYmd') : '-') + ' · 조회날짜 ' + b + ' · 날짜칸 ' + (c.dti ? c.dti.value : '-') + ']';
+  }
   async function gotoDate(ymd) {
     const c = ctx();
-    if (!c.dti) throw new Error('날짜 입력칸을 찾지 못했어요. 날짜를 직접 바꾸고 "날짜 자동 이동"을 끈 뒤 다시 눌러 주세요.');
+    if (!c.dti) throw new Error('날짜 입력칸을 찾지 못했어요.');
     put(c.dti, ymd); await sleep(300);
-    await act(() => clickBtn(c.btnSearch), c.subList, 15000);
+    const r = await act(() => clickBtn(c.btnSearch), c.subList, 15000);
+    r.msgs.filter(Boolean).forEach(m => log('  나이스: ' + m));
     for (let k = 0; k < 30; k++) {
       const c2 = ctx();
-      if (c2.ds.getRowCount() > 0 && c2.ds.getValue(0, 'atteYmd') === ymd) { await sleep(600); return; }
+      if (c2.ds.getRowCount() > 0 && norm8(c2.dti.value) === ymd && shownYmd(c2) === ymd) { await sleep(600); return; }
       await sleep(300);
     }
-    throw new Error('날짜 이동/조회를 확인하지 못했어요. 나이스에 뜬 알림창이 있으면 닫고, 날짜를 직접 조회한 뒤 "날짜 자동 이동"을 끄고 다시 눌러 주세요.');
+    throw new Error('날짜 이동/조회를 확인하지 못했어요. ' + diag(ctx()));
   }
 
   async function fillDay(day) {
     const c = ctx(); const { g, ds } = c;
     if (ds.getRowCount() === 0) throw new Error('학생 목록이 없어요. [조회]를 먼저 해 주세요.');
-    const cur = ds.getValue(0, 'atteYmd');
-    if (cur !== day.ymd) throw new Error('화면 날짜(' + fmt(cur) + ')와 입력할 날짜(' + fmt(day.ymd) + ')가 달라요.');
+    const cur = shownYmd(c);
+    if (cur !== day.ymd) throw new Error('화면 날짜(' + fmt(cur) + ')와 입력할 날짜(' + fmt(day.ymd) + ')가 달라요. ' + diag(c));
     if (c.clear && c.clear.value === 'Y') { put(c.clear, 'N'); log('“깨끗이” 체크를 해제했어요.', 'warn'); }
     let ok = 0, skip = 0, fail = 0; const filled = [];
     for (const it of day.items) {
@@ -429,7 +442,7 @@ async function RUNNER(CORE) {
     rq.msgs.filter(Boolean).forEach(m => log('  나이스: ' + m));
     await sleep(500);
     c = ctx(); const ds = c.ds;
-    if (!ds.getRowCount() || ds.getValue(0, 'atteYmd') !== day.ymd) throw new Error('다시 조회한 화면의 날짜가 달라요. 직접 확인해 주세요.');
+    if (!ds.getRowCount() || shownYmd(c) !== day.ymd) throw new Error('다시 조회한 화면의 날짜가 달라요. ' + diag(c));
     let bad = 0;
     for (const it of filled) {
       const row = rowOf(ds, it.no);
