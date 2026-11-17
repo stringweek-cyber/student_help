@@ -64,7 +64,7 @@ code{background:var(--soft);padding:1px 5px;border-radius:5px;font-size:.88em}
 </head>
 <body>
 <div class="wrap">
-  <h1>나이스 출결 도우미</h1>
+  <h1>나이스 출결 도우미 <span style="font-size:.9rem;color:var(--muted)">v7</span></h1>
   <p class="sub">출결앱 자료를 나이스 일일출결에 자동 입력해요.</p>
 
   <div class="card">
@@ -84,6 +84,7 @@ code{background:var(--soft);padding:1px 5px;border-radius:5px;font-size:.88em}
     <h2><span class="step">2</span>나이스에서 실행</h2>
     <div class="bm-row">
       <a id="bm" class="bm" href="#">📋 나이스 출결입력</a>
+      <span class="pill" style="font-weight:700">v7</span>
       <span class="hint">← 이 버튼을 즐겨찾기 막대로 끌어다 놓기 (처음 한 번)</span>
     </div>
     <ol class="guide">
@@ -109,6 +110,7 @@ code{background:var(--soft);padding:1px 5px;border-radius:5px;font-size:.88em}
 async function RUNNER(CORE) {
   const K = CORE();
   let DATA = [], TEXT = '', pickM = null;
+  const VER = 'v7';
   const PANEL_ID = 'neisAttHelperPanel';
   const old = document.getElementById(PANEL_ID); if (old) old.remove();
   const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -183,7 +185,7 @@ async function RUNNER(CORE) {
   const panel = h('div', 'position:fixed;right:16px;bottom:16px;width:360px;max-height:75vh;display:flex;flex-direction:column;background:#fff;color:#1d2433;border:1px solid #c9d2e3;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.25);z-index:2147483647;font:13px/1.5 "Malgun Gothic",sans-serif;overflow:hidden');
   panel.id = PANEL_ID;
   const head = h('div', 'display:flex;align-items:center;gap:8px;padding:10px 12px;background:#2f6bff;color:#fff;cursor:move');
-  head.appendChild(h('b', 'flex:1', '출결 입력 패널'));
+  head.appendChild(h('b', 'flex:1', '출결 입력 패널 ' + VER));
   const minBtn = h('button', 'background:none;border:0;color:#fff;font-size:16px;cursor:pointer', '–');
   const xBtn = h('button', 'background:none;border:0;color:#fff;font-size:16px;cursor:pointer', '×');
   head.append(minBtn, xBtn); panel.appendChild(head);
@@ -313,15 +315,16 @@ async function RUNNER(CORE) {
     const c = ctx();
     if (!c.dti) throw new Error('날짜 입력칸을 찾지 못했어요.');
     put(c.dti, ymd); await sleep(300);
-    const r = await act(searchWays(c), c.subList, 15000);
-    if (r.state === 'noreact') throw new Error('[조회] 버튼이 반응하지 않아요. ' + diag(ctx()));
-    r.msgs.filter(Boolean).forEach(m => log('  나이스: ' + m));
-    for (let k = 0; k < 30; k++) {
-      const c2 = ctx();
-      if (c2.ds.getRowCount() > 0 && norm8(c2.dti.value) === ymd && shownYmd(c2) === ymd) { await sleep(600); return; }
-      await sleep(300);
+    const loaded = () => { const c2 = ctx(); return c2.ds.getRowCount() > 0 && norm8(c2.dti.value) === ymd && shownYmd(c2) === ymd; };
+    const tried = [];
+    for (const way of searchWays(c)) {
+      const r = await act([way], ctx().subList, 15000);
+      r.msgs.filter(Boolean).forEach(m => log('  나이스: ' + m));
+      tried.push(way[0] + ':' + r.state);
+      for (let k = 0; k < 20; k++) { if (loaded()) { await sleep(250); return; } await sleep(200); }
+      put(ctx().dti, ymd);
     }
-    throw new Error('날짜 이동/조회를 확인하지 못했어요. ' + diag(ctx()));
+    throw new Error('날짜 이동/조회를 확인하지 못했어요. (' + tried.join(', ') + ') ' + diag(ctx()));
   }
 
   async function fillDay(day) {
@@ -336,7 +339,7 @@ async function RUNNER(CORE) {
       const row = rowOf(ds, it.no);
       if (row < 0) { log('✖ ' + tag + ': 이 날짜 목록에 해당 번호가 없어요', 'err'); fail++; continue; }
       if (it.name) { const nm = String(ds.getValue(row, 'stuFlnm') || '').replace(/\s/g, ''); if (nm && nm !== it.name.replace(/\s/g, '')) { log('✖ ' + tag + ': 나이스 명단의 이름과 달라서 건너뜀 (번호 확인)', 'err'); fail++; continue; } }
-      put(c.cmb, it.code); put(c.slot, it.reason || ''); await sleep(250);
+      put(c.cmb, it.code); put(c.slot, it.reason || ''); await sleep(80);
       if (String(c.cmb.value) !== it.code) { log('✖ ' + tag + ': 출결구분 선택 실패', 'err'); fail++; continue; }
       const want = it.absent ? ['jo', 'gyo1','gyo2','gyo3','gyo4','gyo5','gyo6','gyo7','gyo8','gyo9','gyo10', 'jong'] : it.cols;
       const targets = [];
@@ -361,7 +364,9 @@ async function RUNNER(CORE) {
           log('! ' + tag + ': ' + COL_NM(col) + ' 칸에 이미 "' + before + '"가 있어 건너뜀 (직접 확인)', 'warn'); status = 'skip'; break;
         }
         const el = findCell(c, it.no, col, row);
-        const s0 = snap(ds); fire(el); await sleep(450);
+        const s0 = snap(ds); fire(el);
+        for (let w = 0; w < 1500; w += 50) { await sleep(50); if (snap(ds)[row] !== s0[row]) break; }
+        await sleep(80);
         if (closeStrayDialogs()) { log('✖ ' + tag + ': ' + COL_NM(col) + ' 칸에서 예상 못한 창이 떠서 닫았어요', 'err'); status = 'fail'; break; }
         const s1 = snap(ds);
         const changed = s1.map((v, k) => v !== s0[k] ? k : -1).filter(k => k >= 0);
@@ -422,17 +427,18 @@ async function RUNNER(CORE) {
     try {
       for (const [name, fn] of clicks) {
         try { fn(); } catch (e) { continue; }
-        for (let t = 0; t < 3000 && !active; t += 300) {
-          await sleep(300);
+        for (let t = 0; t < 3000 && !active; t += 150) {
+          await sleep(150);
           if (handleDialogs(msgs)) active = true;
         }
         if (active) { how = name; break; }
       }
       if (!active) return { state: 'noreact', msgs, how };
-      for (let t = 0; t < timeout; t += 300) {
-        await sleep(300);
-        if (handleDialogs(msgs)) quiet = 0; else quiet += 300;
-        if (state !== 'wait' && quiet >= 1500) break;
+      for (let t = 0; t < timeout; t += 200) {
+        await sleep(200);
+        if (handleDialogs(msgs)) quiet = 0; else quiet += 200;
+        if (state !== 'wait' && quiet >= 600) break;
+        if (state === 'wait' && quiet >= 4000) { state = 'assumed'; break; }
       }
     } finally {
       window.confirm = oc; window.alert = oa;
@@ -473,7 +479,7 @@ async function RUNNER(CORE) {
   }
 
   async function doDay(i) {
-    const day = DATA[i];
+    const day = DATA[i]; const t0 = Date.now();
     log('── ' + fmt(day.ymd) + ' 시작');
     setState(i, '진행 중', '#2f6bff');
     try {
@@ -485,6 +491,7 @@ async function RUNNER(CORE) {
       if (!r.ok) { setState(i, '변경 없음', '#667085'); rows[i].done = true; return true; }
       await saveAndVerify(day, r.filled);
       setState(i, '저장 완료', '#12a150'); rows[i].done = true;
+      log('  (' + Math.round((Date.now() - t0) / 1000) + '초 걸림)');
       return true;
     } catch (e) {
       log('✖ ' + e.message, 'err'); setState(i, '오류', '#d92d20');
