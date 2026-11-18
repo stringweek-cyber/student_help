@@ -64,7 +64,7 @@ code{background:var(--soft);padding:1px 5px;border-radius:5px;font-size:.88em}
 </head>
 <body>
 <div class="wrap">
-  <h1>나이스 출결 도우미 <span style="font-size:.9rem;color:var(--muted)">v12</span></h1>
+  <h1>나이스 출결 도우미 <span style="font-size:.9rem;color:var(--muted)">v13</span></h1>
   <p class="sub">출결앱 자료를 나이스 일일출결에 자동 입력해요.</p>
 
   <div class="card">
@@ -84,7 +84,7 @@ code{background:var(--soft);padding:1px 5px;border-radius:5px;font-size:.88em}
     <h2><span class="step">2</span>나이스에서 실행</h2>
     <div class="bm-row">
       <a id="bm" class="bm" href="#">📋 나이스 출결입력</a>
-      <span class="pill" style="font-weight:700">v12</span>
+      <span class="pill" style="font-weight:700">v13</span>
       <span class="hint">← 이 버튼을 즐겨찾기 막대로 끌어다 놓기 (처음 한 번)</span>
     </div>
     <ol class="guide">
@@ -110,7 +110,7 @@ code{background:var(--soft);padding:1px 5px;border-radius:5px;font-size:.88em}
 async function RUNNER(CORE) {
   const K = CORE();
   let DATA = [], TEXT = '', pickM = null;
-  const VER = 'v12';
+  const VER = 'v13';
   const PANEL_ID = 'neisAttHelperPanel';
   const old = document.getElementById(PANEL_ID); if (old) old.remove();
   const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -227,9 +227,9 @@ async function RUNNER(CORE) {
   const allBtn = h('button', 'flex:1;border:0;background:#12a150;color:#fff;border-radius:6px;padding:6px;cursor:pointer;font-weight:700', '▶ 전체 자동 실행');
   const stopBtn = h('button', 'border:1px solid #d92d20;background:#fff;color:#d92d20;border-radius:6px;padding:6px 10px;cursor:pointer', '■ 중지');
   bar.append(allBtn, stopBtn); body.appendChild(bar);
-  const list = h('div', 'overflow:auto;max-height:30vh;border-bottom:1px solid #e3e6ee');
+  const list = h('div', 'overflow:auto;max-height:22vh;border-bottom:1px solid #e3e6ee');
   body.appendChild(list);
-  const logBox = h('div', 'overflow:auto;flex:1;min-height:80px;max-height:22vh;padding:8px 12px;font-size:12px;background:#fbfcfe');
+  const logBox = h('div', 'overflow:auto;flex:1;min-height:160px;max-height:40vh;padding:8px 12px;font-size:12px;background:#fbfcfe');
   body.appendChild(logBox);
   body.appendChild(h('div', 'padding:8px 12px;font-size:12px;color:#b25e00;background:#fff7e8', '출결마감은 직접 해 주세요.'));
   panel.appendChild(body);
@@ -660,6 +660,9 @@ function buildData(text, year, pickM) {
   recs.forEach((r, idx) => {
     if (idx === 0 && (appMode || /날짜/.test(r[0] || ''))) return;
     if (appMode) {
+      // 예전 출결앱 파일은 교시('2교시, 3교시, …')가 쉼표 때문에 여러 칸으로 쪼개져 있어요 → 다시 합치기
+      const extra = r.length - head.length, pi = H('교시');
+      if (extra > 0 && pi >= 0) r = r.slice(0, pi).concat([r.slice(pi, pi + extra + 1).join(',')], r.slice(pi + extra + 1));
       const g = n => (H(n) >= 0 ? (r[H(n)] || '') : '').trim();
       const type = g('출결유형'), rs = g('출결사유');
       const pre = rs === '인정' ? '출석인정' : rs;
